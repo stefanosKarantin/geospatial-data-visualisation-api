@@ -1,0 +1,7 @@
+flask
+flask-restful
+gunicorn
+python-dotenv
+requests
+authlib
+six
