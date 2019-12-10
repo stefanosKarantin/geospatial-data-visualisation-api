@@ -38,6 +38,10 @@ def requires_auth(f):
 
   return decorated
 
+@app.route('/test', methods=['GET'])
+def get_tasks():
+    return jsonify({'tasks': 'ela mwreeee'})
+
 # run the application
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5090, debug=True)
