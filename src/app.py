@@ -20,20 +20,17 @@ from constants import *
 
 # Flask app setup
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 app.config['CORS_HEADERS'] = 'Content-Type'
 
-def add_cors_headers(response):
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    if request.method == 'OPTIONS':
-        response.headers['Access-Control-Allow-Methods'] = 'DELETE, GET, POST, PUT'
-        headers = request.headers.get('Access-Control-Request-Headers')
-        print('ela')
-        if headers:
-            response.headers['Access-Control-Allow-Headers'] = headers
-    return response
+# def add_cors_headers(response):
+#     response.headers['Access-Control-Allow-Origin'] = 'http://localhost:3000'
+#     response.headers['Access-Control-Allow-Methods'] = 'POST'
+#     response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+#     print(request.json)
+#     return response
 
-app.after_request(add_cors_headers)
+# app.after_request(add_cors_headers)
 
 app.secret_key = environ.get("SECRET_KEY") or urandom(24)
 
@@ -61,13 +58,13 @@ def load_user(user_id):
 def get_google_provider_cfg():
     return requests.get(GOOGLE_DISCOVERY_URL).json()
 
-@app.route("/authenticate")
+@app.route("/authenticate", methods = ['POST'])
 @cross_origin()
 def login():
     # Find out what URL to hit for Google login
     google_provider_cfg = get_google_provider_cfg()
     authorization_endpoint = google_provider_cfg["authorization_endpoint"]
-
+    # print(request.json)
     # Use library to construct the request for Google login and provide
     # scopes that let you retrieve user's profile from Google
     request_uri = client.prepare_request_uri(
@@ -146,4 +143,4 @@ def logout():
     return redirect(url_for("index"))
 
 if __name__ == "__main__":
-    app.run(ssl_context="adhoc")
+    app.run()
