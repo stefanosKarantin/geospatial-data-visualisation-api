@@ -4,8 +4,8 @@
 import jwt
 import datetime
 
+from geoalchemy2 import Geometry
 from src.server import app, db, bcrypt
-
 
 class User(db.Model):
     """ User Model for storing user related details """
@@ -44,6 +44,25 @@ class User(db.Model):
         except Exception as e:
             return e
 
+    def encode_auth_refresh_token(self, user_id):
+        """
+        Generates the Auth Token
+        :return: string
+        """
+        try:
+            payload = {
+                'exp': datetime.datetime.utcnow() + datetime.timedelta(days=0, minutes=60),
+                'iat': datetime.datetime.utcnow(),
+                'sub': user_id
+            }
+            return jwt.encode(
+                payload,
+                app.config.get('SECRET_REFRESH_KEY'),
+                algorithm='HS256'
+            )
+        except Exception as e:
+            return e
+
     @staticmethod
     def decode_auth_token(auth_token):
         """
@@ -54,6 +73,26 @@ class User(db.Model):
         try:
             payload = jwt.decode(auth_token, app.config.get('SECRET_KEY'))
             is_blacklisted_token = BlacklistToken.check_blacklist(auth_token)
+            if is_blacklisted_token:
+                return 'Token blacklisted. Please log in again.'
+            else:
+                print(payload)
+                return payload['sub']
+        except jwt.ExpiredSignatureError:
+            return 'Signature expired. Please log in again.'
+        except jwt.InvalidTokenError:
+            return 'Invalid token. Please log in again.'
+
+    @staticmethod
+    def decode_auth_refresh_token(auth_refresh_token):
+        """
+        Validates the auth token
+        :param auth_refresh_token:
+        :return: integer|string
+        """
+        try:
+            payload = jwt.decode(auth_refresh_token, app.config.get('SECRET_REFRESH_KEY'))
+            is_blacklisted_token = BlacklistToken.check_blacklist(auth_refresh_token)
             if is_blacklisted_token:
                 return 'Token blacklisted. Please log in again.'
             else:
@@ -89,3 +128,18 @@ class BlacklistToken(db.Model):
             return True
         else:
             return False
+
+class Polygon(db.Model):
+    """
+    Model of cretan raster data
+    """
+    __tablename__ = 'geodata'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    raster_val = db.Column(db.Integer)
+    geom = db.Column(Geometry('POLYGON'))
+
+    def __init__(self, id, raster_val, geom):
+        self.id = id
+        self.raster_val = raster_val
+        self.geom = geom

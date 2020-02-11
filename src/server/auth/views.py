@@ -31,21 +31,23 @@ class RegisterAPI(MethodView):
                 db.session.commit()
                 # generate the auth token
                 auth_token = user.encode_auth_token(user.id)
+                auth_refresh_token = user.encode_auth_refresh_token(user.id)
                 responseObject = {
-                    'status': 'success',
+                    'success': True,
                     'message': 'Successfully registered.',
-                    'auth_token': auth_token.decode()
+                    'auth_token': auth_token.decode(),
+                    'auth_refresh_token': auth_refresh_token.decode()
                 }
                 return make_response(jsonify(responseObject)), 201
             except Exception as e:
                 responseObject = {
-                    'status': 'fail',
+                    'success': False,
                     'message': 'Some error occurred. Please try again.'
                 }
                 return make_response(jsonify(responseObject)), 401
         else:
             responseObject = {
-                'status': 'fail',
+                'success': False,
                 'message': 'User already exists. Please Log in.',
             }
             return make_response(jsonify(responseObject)), 202
@@ -67,23 +69,26 @@ class LoginAPI(MethodView):
                 user.password, post_data.get('password')
             ):
                 auth_token = user.encode_auth_token(user.id)
-                if auth_token:
+                auth_refresh_token = user.encode_auth_refresh_token(user.id)
+                if auth_token and auth_refresh_token:
                     responseObject = {
-                        'status': 'success',
+                        'success': True,
                         'message': 'Successfully logged in.',
-                        'auth_token': auth_token.decode()
+                        'email': user.email,
+                        'auth_token': auth_token.decode(),
+                        'auth_refresh_token': auth_refresh_token.decode()
                     }
                     return make_response(jsonify(responseObject)), 200
             else:
                 responseObject = {
-                    'status': 'fail',
+                    'success': False,
                     'message': 'User does not exist.'
                 }
                 return make_response(jsonify(responseObject)), 404
         except Exception as e:
             print(e)
             responseObject = {
-                'status': 'fail',
+                'success': False,
                 'message': 'Try again'
             }
             return make_response(jsonify(responseObject)), 500
@@ -97,14 +102,7 @@ class UserAPI(MethodView):
         # get the auth token
         auth_header = request.headers.get('Authorization')
         if auth_header:
-            try:
-                auth_token = auth_header.split(" ")[1]
-            except IndexError:
-                responseObject = {
-                    'status': 'fail',
-                    'message': 'Bearer token malformed.'
-                }
-                return make_response(jsonify(responseObject)), 401
+            auth_token = auth_header
         else:
             auth_token = ''
         if auth_token:
@@ -112,7 +110,7 @@ class UserAPI(MethodView):
             if not isinstance(resp, str):
                 user = User.query.filter_by(id=resp).first()
                 responseObject = {
-                    'status': 'success',
+                    'success': True,
                     'data': {
                         'user_id': user.id,
                         'email': user.email,
@@ -122,13 +120,13 @@ class UserAPI(MethodView):
                 }
                 return make_response(jsonify(responseObject)), 200
             responseObject = {
-                'status': 'fail',
+                'success': False,
                 'message': resp
             }
             return make_response(jsonify(responseObject)), 401
         else:
             responseObject = {
-                'status': 'fail',
+                'success': False,
                 'message': 'Provide a valid auth token.'
             }
             return make_response(jsonify(responseObject)), 401
@@ -142,7 +140,7 @@ class LogoutAPI(MethodView):
         # get auth token
         auth_header = request.headers.get('Authorization')
         if auth_header:
-            auth_token = auth_header.split(" ")[1]
+            auth_token = auth_header
         else:
             auth_token = ''
         if auth_token:
@@ -155,34 +153,97 @@ class LogoutAPI(MethodView):
                     db.session.add(blacklist_token)
                     db.session.commit()
                     responseObject = {
-                        'status': 'success',
+                        'success': True,
                         'message': 'Successfully logged out.'
                     }
+                    print(responseObject)
                     return make_response(jsonify(responseObject)), 200
                 except Exception as e:
                     responseObject = {
-                        'status': 'fail',
+                        'success': False,
                         'message': e
                     }
                     return make_response(jsonify(responseObject)), 200
             else:
                 responseObject = {
-                    'status': 'fail',
+                    'success': False,
                     'message': resp
                 }
                 return make_response(jsonify(responseObject)), 401
         else:
             responseObject = {
-                'status': 'fail',
+                'success': False,
                 'message': 'Provide a valid auth token.'
             }
             return make_response(jsonify(responseObject)), 403
+
+class RefreshTokenAPI(MethodView):
+    """
+    Refresh Token Resource
+    """
+    def post(self):
+        # get auth token
+        post_data = request.get_json()
+        auth_header = request.headers.get('Authorization')
+        if auth_header:
+            auth_refresh_token = auth_header
+        else:
+            auth_refresh_token = ''
+        user = User.query.filter_by(
+            email=post_data.get('email')
+        ).first()
+        if user:
+            if auth_refresh_token:
+                resp = User.decode_auth_refresh_token(auth_refresh_token)
+                if not isinstance(resp, str):
+                    # mark the token as blacklisted
+                    blacklist_token = BlacklistToken(token=auth_refresh_token)
+                    print(blacklist_token)
+                    try:
+                        # insert the token
+                        db.session.add(blacklist_token)
+                        db.session.commit()
+                        auth_token = user.encode_auth_token(user.id)
+                        new_auth_refresh_token = user.encode_auth_refresh_token(user.id)
+                        if auth_token and new_auth_refresh_token:
+                            responseObject = {
+                                'success': True,
+                                'message': 'Successfully refreshed token.',
+                                'auth_token': auth_token.decode(),
+                                'auth_refresh_token': new_auth_refresh_token.decode()
+                            }
+                            return make_response(jsonify(responseObject)), 200
+                    except Exception as e:
+                        responseObject = {
+                            'success': False,
+                            'message': e
+                        }
+                        return make_response(jsonify(responseObject)), 200
+                else:
+                    responseObject = {
+                        'success': False,
+                        'message': resp
+                    }
+                    return make_response(jsonify(responseObject)), 401
+            else:
+                responseObject = {
+                    'success': False,
+                    'message': 'Provide a valid auth token.'
+                }
+                return make_response(jsonify(responseObject)), 403
+        else:
+                responseObject = {
+                    'success': False,
+                    'message': 'User does not exist.'
+                }
+                return make_response(jsonify(responseObject)), 404
 
 # define the API resources
 registration_view = RegisterAPI.as_view('register_api')
 login_view = LoginAPI.as_view('login_api')
 user_view = UserAPI.as_view('user_api')
 logout_view = LogoutAPI.as_view('logout_api')
+refresh_token_view = RefreshTokenAPI.as_view('refresh_token_api')
 
 # add Rules for API Endpoints
 auth_blueprint.add_url_rule(
@@ -203,5 +264,10 @@ auth_blueprint.add_url_rule(
 auth_blueprint.add_url_rule(
     '/auth/logout',
     view_func=logout_view,
+    methods=['POST']
+)
+auth_blueprint.add_url_rule(
+    '/auth/refresh',
+    view_func=refresh_token_view,
     methods=['POST']
 )

@@ -21,3 +21,4 @@ python-editor
 six
 SQLAlchemy
 Werkzeug
+geoalchemy2
