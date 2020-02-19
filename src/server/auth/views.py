@@ -35,6 +35,7 @@ class RegisterAPI(MethodView):
                 responseObject = {
                     'success': True,
                     'message': 'Successfully registered.',
+                    'email': user.email,
                     'auth_token': auth_token.decode(),
                     'auth_refresh_token': auth_refresh_token.decode()
                 }

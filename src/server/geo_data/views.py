@@ -19,7 +19,7 @@ class GeoJsonView(MethodView):
         else:
             auth_token = ''
         if auth_token:
-            polygons = db.session.query(Polygon.id, Polygon.raster_val, func.ST_AsGeoJSON(Polygon.geom)).limit(5).all()
+            polygons = db.session.query(Polygon.id, Polygon.raster_val, func.ST_AsGeoJSON(Polygon.geom)).all()
             print(polygons)
             responseObject = {
                 'success': True,
