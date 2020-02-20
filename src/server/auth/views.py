@@ -9,6 +9,15 @@ from src.server.models import User, BlacklistToken
 
 auth_blueprint = Blueprint('auth', __name__)
 
+def getError(err):
+    e = {}
+    e['error'] , e['message'] = err
+    return e
+
+server_error = ('SERVER_ERROR', 'Some error occurred. Please try again.')
+user_exist_error = ('USER_EXISTS_ERROR', 'User already exists. Please Log in.')
+credentials_error = ('CREDENTIALS_ERROR', 'Incorrect Username or Password')
+invalid_token_error = ('TOKEN_ERROR', 'Provide a valid auth token.')
 
 class RegisterAPI(MethodView):
     """
@@ -43,13 +52,13 @@ class RegisterAPI(MethodView):
             except Exception as e:
                 responseObject = {
                     'success': False,
-                    'message': 'Some error occurred. Please try again.'
+                    **getError(server_error)
                 }
-                return make_response(jsonify(responseObject)), 401
+                return make_response(jsonify(responseObject)), 500
         else:
             responseObject = {
                 'success': False,
-                'message': 'User already exists. Please Log in.',
+                **getError(user_exist_error)
             }
             return make_response(jsonify(responseObject)), 202
 
@@ -83,14 +92,14 @@ class LoginAPI(MethodView):
             else:
                 responseObject = {
                     'success': False,
-                    'message': 'User does not exist.'
+                    **getError(credentials_error)
                 }
-                return make_response(jsonify(responseObject)), 404
+                return make_response(jsonify(responseObject)), 202
         except Exception as e:
-            print(e)
             responseObject = {
                 'success': False,
-                'message': 'Try again'
+                **getError(server_error)
+
             }
             return make_response(jsonify(responseObject)), 500
 
@@ -128,7 +137,8 @@ class UserAPI(MethodView):
         else:
             responseObject = {
                 'success': False,
-                'message': 'Provide a valid auth token.'
+                **getError(invalid_token_error)
+
             }
             return make_response(jsonify(responseObject)), 401
 
@@ -157,14 +167,13 @@ class LogoutAPI(MethodView):
                         'success': True,
                         'message': 'Successfully logged out.'
                     }
-                    print(responseObject)
                     return make_response(jsonify(responseObject)), 200
                 except Exception as e:
                     responseObject = {
                         'success': False,
                         'message': e
                     }
-                    return make_response(jsonify(responseObject)), 200
+                    return make_response(jsonify(responseObject)), 500
             else:
                 responseObject = {
                     'success': False,
@@ -174,9 +183,10 @@ class LogoutAPI(MethodView):
         else:
             responseObject = {
                 'success': False,
-                'message': 'Provide a valid auth token.'
+                **getError(invalid_token_error)
+
             }
-            return make_response(jsonify(responseObject)), 403
+            return make_response(jsonify(responseObject)), 401
 
 class RefreshTokenAPI(MethodView):
     """
@@ -199,7 +209,6 @@ class RefreshTokenAPI(MethodView):
                 if not isinstance(resp, str):
                     # mark the token as blacklisted
                     blacklist_token = BlacklistToken(token=auth_refresh_token)
-                    print(blacklist_token)
                     try:
                         # insert the token
                         db.session.add(blacklist_token)
@@ -219,7 +228,7 @@ class RefreshTokenAPI(MethodView):
                             'success': False,
                             'message': e
                         }
-                        return make_response(jsonify(responseObject)), 200
+                        return make_response(jsonify(responseObject)), 500
                 else:
                     responseObject = {
                         'success': False,
@@ -229,15 +238,15 @@ class RefreshTokenAPI(MethodView):
             else:
                 responseObject = {
                     'success': False,
-                    'message': 'Provide a valid auth token.'
+                     **getError(invalid_token_error)
                 }
-                return make_response(jsonify(responseObject)), 403
+                return make_response(jsonify(responseObject)), 401
         else:
                 responseObject = {
                     'success': False,
-                    'message': 'User does not exist.'
+                     **getError(user_doesnt_exist_error)
                 }
-                return make_response(jsonify(responseObject)), 404
+                return make_response(jsonify(responseObject)), 202
 
 # define the API resources
 registration_view = RegisterAPI.as_view('register_api')

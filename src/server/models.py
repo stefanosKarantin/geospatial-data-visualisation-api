@@ -7,6 +7,12 @@ import datetime
 from geoalchemy2 import Geometry
 from src.server import app, db, bcrypt
 
+def getTokenError(msg):
+    return {
+        'error': 'TOKEN_ERROR',
+        'message': msg
+    }
+
 class User(db.Model):
     """ User Model for storing user related details """
     __tablename__ = "users"
@@ -32,7 +38,7 @@ class User(db.Model):
         """
         try:
             payload = {
-                'exp': datetime.datetime.utcnow() + datetime.timedelta(days=0, minutes=10),
+                'exp': datetime.datetime.utcnow() + datetime.timedelta(days=0, seconds=10),
                 'iat': datetime.datetime.utcnow(),
                 'sub': user_id
             }
@@ -74,14 +80,13 @@ class User(db.Model):
             payload = jwt.decode(auth_token, app.config.get('SECRET_KEY'))
             is_blacklisted_token = BlacklistToken.check_blacklist(auth_token)
             if is_blacklisted_token:
-                return 'Token blacklisted. Please log in again.'
+                return getTokenError('Token blacklisted. Please log in again.')
             else:
-                print(payload)
                 return payload['sub']
         except jwt.ExpiredSignatureError:
-            return 'Signature expired. Please log in again.'
+            return getTokenError('Signature expired. Please log in again.')
         except jwt.InvalidTokenError:
-            return 'Invalid token. Please log in again.'
+            return getTokenError('Invalid token. Please log in again.')
 
     @staticmethod
     def decode_auth_refresh_token(auth_refresh_token):
@@ -94,13 +99,13 @@ class User(db.Model):
             payload = jwt.decode(auth_refresh_token, app.config.get('SECRET_REFRESH_KEY'))
             is_blacklisted_token = BlacklistToken.check_blacklist(auth_refresh_token)
             if is_blacklisted_token:
-                return 'Token blacklisted. Please log in again.'
+                return ('Token blacklisted. Please log in again.')
             else:
                 return payload['sub']
         except jwt.ExpiredSignatureError:
-            return 'Signature expired. Please log in again.'
+            return getTokenError('Signature expired. Please log in again.')
         except jwt.InvalidTokenError:
-            return 'Invalid token. Please log in again.'
+            return getTokenError('Invalid token. Please log in again.')
 
 
 class BlacklistToken(db.Model):
