@@ -21,10 +21,12 @@ class GeoJsonView(MethodView):
         if auth_token:
             resp = User.decode_auth_token(auth_token)
             if not isinstance(resp, str):
-                polygons = db.session.query(Polygon.id, Polygon.raster_val, func.ST_AsGeoJSON(Polygon.geom)).all()
+                polygons = db.session.query(Polygon.id, Polygon.raster_val, func.ST_AsGeoJSON(Polygon.geom)).limit(100).all()
+                raster_vals = list(map(lambda t: t[0],db.session.query(func.distinct(Polygon.raster_val)).order_by(Polygon.raster_val).all()))
                 responseObject = {
                     'success': True,
-                    'polygons': polygons # list(map(lambda p: json.loads(p[0]), polygons))
+                    'polygons': polygons,
+                    'rasterValues': raster_vals
                 }
 
                 return make_response(jsonify(responseObject)), 200
