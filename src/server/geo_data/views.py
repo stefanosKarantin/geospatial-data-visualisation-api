@@ -8,6 +8,7 @@ from sqlalchemy import func
 
 from src.server import db
 from src.server.models import Polygon, User
+from src.server.errors import getError, invalid_token_error
 
 geo_blueprint = Blueprint('geo', __name__)
 
@@ -21,7 +22,7 @@ class GeoJsonView(MethodView):
         if auth_token:
             resp = User.decode_auth_token(auth_token)
             if not isinstance(resp, str):
-                polygons = db.session.query(Polygon.id, Polygon.raster_val, func.ST_AsGeoJSON(Polygon.geom)).limit(100).all()
+                polygons = db.session.query(Polygon.id, Polygon.raster_val, func.ST_AsGeoJSON(Polygon.geom)).limit(30000).all()
                 raster_vals = list(map(lambda t: t[0],db.session.query(func.distinct(Polygon.raster_val)).order_by(Polygon.raster_val).all()))
                 responseObject = {
                     'success': True,
