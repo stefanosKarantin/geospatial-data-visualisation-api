@@ -43,7 +43,7 @@ class GeoJsonView(MethodView):
         if auth_token:
             resp = User.decode_auth_token(auth_token)
             if not isinstance(resp, str):
-                polygons = db.session.query(Polygon.id, Polygon.raster_val, func.ST_AsGeoJSON(Polygon.geom)).limit(10000).all()
+                polygons = db.session.query(Polygon.id, Polygon.raster_val, func.ST_AsGeoJSON(func.ST_Transform(Polygon.geom, 3857))).limit(5000).all()
                 raster_vals = list(map(lambda t: t[0],db.session.query(func.distinct(Polygon.raster_val)).order_by(Polygon.raster_val).all()))
                 responseObject = {
                     'success': True,
@@ -84,9 +84,9 @@ class GeoTileView(MethodView):
             # tile = db.engine.execute(query).fetchone()[0]
 
             subq = select([
-                func.ST_AsMVTGeom(Polygon.geom,
+                func.ST_AsMVTGeom(func.ST_Transform(Polygon.geom, 3857),
                     func.ST_MakeEnvelope(
-                        bbox[0], bbox[1], bbox[2], bbox[3], 4326
+                        bbox[0], bbox[1], bbox[2], bbox[3], 3857
                     ),
                     4096,
                     256,
