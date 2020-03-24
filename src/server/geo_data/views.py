@@ -1,12 +1,15 @@
 # src/server/auth/views.py
 import ast
 import base64
+import io
 import json
+import logging
 from os import makedirs
 from os.path import dirname, join, abspath, exists
+import re
 
 import psycopg2
-from flask import Blueprint, request, make_response, jsonify
+from flask import Blueprint, request, make_response, jsonify, Response
 from flask.views import MethodView
 from mercantile import bounds
 from sqlalchemy import func, text
@@ -24,6 +27,15 @@ geo_blueprint = Blueprint('geo', __name__)
 
 BASE_DIR = dirname(abspath(__file__))
 CACHE_DIR = join(BASE_DIR,'cache')
+
+CACHE_PATH="cache/"
+
+TABLE = {
+    'table':       'geodata',
+    'srid':        '4326',
+    'geomColumn':  'geom',
+    'attrColumns': 'id, raster_val'
+    }
 
 class ST_AsMVTGeom(GenericFunction):
     name = 'ST_AsMVTGeom'
@@ -66,58 +78,126 @@ class GeoJsonView(MethodView):
             return make_response(jsonify(responseObject)), 401
 
 class GeoTileView(MethodView):
-    def get(self, z=0, x=0, y=0):
-
-        bbox = bounds(x,y,z)
-        print(x,y,z)
-        tile = None
-
-        tilefolder = "{}/{}/{}".format(CACHE_DIR,z,x)
-        tilepath = "{}/{}.pbf".format(tilefolder,y)
-
-        if not exists(tilepath):
-            # query = text("SELECT ST_AsMVT(tile, 'layer', 4096, 'geom') FROM (" \
-            # "SELECT id, raster_val, ST_AsMVTGeom(geom, ST_MakeEnvelope(" \
-            #     "{}, {} ,{}, {}, 4326" \
-            # "), 4096, 0, false) AS geom FROM geodata) AS tile".format(bbox[0], bbox[1], bbox[2], bbox[3]))
-
-            # tile = db.engine.execute(query).fetchone()[0]
-
-            subq = select([
-                func.ST_AsMVTGeom(func.ST_Transform(Polygon.geom, 3857),
-                    func.ST_MakeEnvelope(
-                        bbox[0], bbox[1], bbox[2], bbox[3], 3857
-                    ),
-                    4096,
-                    256,
-                    False
-                ).label('geom')
-            ])
-            subq = subq.alias('q')
-
-            q = select([func.ST_AsMVT(column('q'), 'layer', 4096, 'geom')]).select_from(subq).alias('mvtgeom')
-
-            conn = db.engine.connect()
-
-            tile = conn.scalar(q)
-
-            # tile = db.session.query(q).one()[0]
-            # print(tile)
-            # print(tile.st_asmvt)
-            if not exists(tilefolder):
-                makedirs(tilefolder)
-
-            with open(tilepath, 'wb') as f:
-                f.write(tile)
-                f.close()
-                conn.close()
+    def pathToTile(self, path):
+        m = re.search(r'^\/(\d+)\/(\d+)\/(\d+)\.(\w+)', path)
+        if (m):
+            return {'zoom':   int(m.group(1)),
+                    'x':      int(m.group(2)),
+                    'y':      int(m.group(3)),
+                    'format': m.group(4)}
         else:
-            tile = open(tilepath, 'rb').read()
+            return None
 
-        response = make_response(tile)
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Content-Type'] = "application/octet-stream"
-        return response, 200
+    def tileIsValid(self, tile):
+        if not ('x' in tile and 'y' in tile and 'zoom' in tile):
+            return False
+        if 'format' not in tile or tile['format'] not in ['pbf', 'mvt']:
+            return False
+        size = 2 ** tile['zoom'];
+        if tile['x'] >= size or tile['y'] >= size:
+            return False
+        if tile['x'] < 0 or tile['y'] < 0:
+            return False
+        return True
+
+    def tileToEnvelope(self, tile):
+        # Width of world in EPSG:3857
+        worldMercMax = 20037508.3427892
+        worldMercMin = -1 * worldMercMax
+        worldMercSize = worldMercMax - worldMercMin
+        # Width in tiles
+        worldTileSize = 2 ** tile['zoom']
+        # Tile width in EPSG:3857
+        tileMercSize = worldMercSize / worldTileSize
+        # Calculate geographic bounds from tile coordinates
+        # XYZ tile coordinates are in "image space" so origin is
+        # top-left, not bottom right
+        env = dict()
+        env['xmin'] = worldMercMin + tileMercSize * tile['x']
+        env['xmax'] = worldMercMin + tileMercSize * (tile['x'] + 1)
+        env['ymin'] = worldMercMax - tileMercSize * (tile['y'] + 1)
+        env['ymax'] = worldMercMax - tileMercSize * (tile['y'])
+        return env
+
+
+    # Generate SQL to materialize a query envelope in EPSG:3857.
+    # Densify the edges a little so the envelope can be
+    # safely converted to other coordinate systems.
+    def envelopeToBoundsSQL(self, env):
+        DENSIFY_FACTOR = 4
+        env['segSize'] = (env['xmax'] - env['xmin'])/DENSIFY_FACTOR
+        sql_tmpl = 'ST_Segmentize(ST_MakeEnvelope({xmin}, {ymin}, {xmax}, {ymax}, 3857),{segSize})'
+        return sql_tmpl.format(**env)
+
+
+    # Generate a SQL query to pull a tile worth of MVT data
+    # from the table of interest.
+    def envelopeToSQL(self, env):
+        tbl = TABLE.copy()
+        tbl['env'] = self.envelopeToBoundsSQL(env)
+        # Materialize the bounds
+        # Select the relevant geometry and clip to MVT bounds
+        # Convert to MVT format
+        sql_tmpl = """
+            WITH
+            bounds AS (
+                SELECT {env} AS geom,
+                       {env}::box2d AS b2d
+            ),
+            mvtgeom AS (
+                SELECT ST_AsMVTGeom(ST_Transform(t.{geomColumn}, 3857), bounds.b2d) AS geom,
+                       {attrColumns}
+                FROM {table} t, bounds
+                WHERE ST_Intersects(t.{geomColumn}, ST_Transform(bounds.geom, {srid}))
+            )
+            SELECT ST_AsMVT(mvtgeom.*) FROM mvtgeom
+        """
+        return sql_tmpl.format(**tbl)
+
+
+    # Run tile query SQL and return error on failure conditions
+    def sqlToPbf(self, sql):
+        # Make and hold connection to database
+        if not self.DATABASE_CONNECTION:
+            try:
+                self.DATABASE_CONNECTION = psycopg2.connect(**DATABASE)
+            except (Exception, psycopg2.Error) as error:
+                self.send_error(500, "cannot connect: %s" % (str(DATABASE)))
+                return None
+
+        # Query for MVT
+        with self.DATABASE_CONNECTION.cursor() as cur:
+            cur.execute(sql)
+            if not cur:
+                self.send_error(404, "sql query failed: %s" % (sql))
+                return None
+            return cur.fetchone()[0]
+
+        return None
+
+    def get(self, z, x, y):
+        path = '/' + '/'.join(request.path.split('/')[2:])
+        tile = self.pathToTile(path)
+        if not (tile and self.tileIsValid(tile)):
+            responseObject = {
+                'success': False,
+                'error': "invalid tile path: %s" % (path)
+            }
+            return make_response(jsonify(responseObject)), 400
+
+        env = self.tileToEnvelope(tile)
+        sql = self.envelopeToSQL(env)
+        pbf = db.engine.execute(sql).fetchone()[0]
+
+        # response = make_response(pbf)
+        # response.headers['Access-Control-Allow-Origin'] = '*'
+        # response.headers['Content-Type'] = "application/vnd.mapbox-vector-tile"
+        return Response(pbf,
+                       mimetype="text/plain",
+                       headers={
+                           "Content-Type": "application/vnd.mapbox-vector-tile",
+                           "Access-Control-Allow-Origin": "*"
+                        })
 
 # define the API resources
 get_geojson_view = GeoJsonView.as_view('get_geojson_view')
@@ -131,7 +211,7 @@ geo_blueprint.add_url_rule(
 )
 
 geo_blueprint.add_url_rule(
-    '/tiles/<int:z>/<int:x>/<int:y>',
+    '/tiles/<int:z>/<int:x>/<int:y>.mvt',
     view_func=get_tile_view,
     methods=['GET']
 )
