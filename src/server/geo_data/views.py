@@ -34,7 +34,7 @@ TABLE = {
     'table':       'geodata',
     'srid':        '4326',
     'geomColumn':  'geom',
-    'attrColumns': 'id, raster_val'
+    'attrColumns': 'id, raster_val, ST_Area(ST_Transform(t.geom, 3857)) as area'
     }
 
 class ST_AsMVTGeom(GenericFunction):
@@ -55,7 +55,7 @@ class GeoJsonView(MethodView):
         if auth_token:
             resp = User.decode_auth_token(auth_token)
             if not isinstance(resp, str):
-                polygons = db.session.query(Polygon.id, Polygon.raster_val, func.ST_AsGeoJSON(func.ST_Transform(Polygon.geom, 3857)), func.ST_Area(func.ST_Transform(Polygon.geom, 3857))).limit(5000).all()
+                polygons = db.session.query(Polygon.id, Polygon.raster_val, func.ST_AsGeoJSON(func.ST_Transform(Polygon.geom, 3857)), func.ST_Area(func.ST_Transform(Polygon.geom, 3857))).all()
                 raster_vals = list(map(lambda t: t[0],db.session.query(func.distinct(Polygon.raster_val)).order_by(Polygon.raster_val).all()))
                 responseObject = {
                     'success': True,
@@ -91,7 +91,7 @@ class GeoTileView(MethodView):
     def tileIsValid(self, tile):
         if not ('x' in tile and 'y' in tile and 'zoom' in tile):
             return False
-        if 'format' not in tile or tile['format'] not in ['pbf', 'mvt']:
+        if 'format' not in tile or tile['format'] not in ['pbf', 'mvt', 'png']:
             return False
         size = 2 ** tile['zoom'];
         if tile['x'] >= size or tile['y'] >= size:
@@ -154,27 +154,6 @@ class GeoTileView(MethodView):
         """
         return sql_tmpl.format(**tbl)
 
-
-    # Run tile query SQL and return error on failure conditions
-    def sqlToPbf(self, sql):
-        # Make and hold connection to database
-        if not self.DATABASE_CONNECTION:
-            try:
-                self.DATABASE_CONNECTION = psycopg2.connect(**DATABASE)
-            except (Exception, psycopg2.Error) as error:
-                self.send_error(500, "cannot connect: %s" % (str(DATABASE)))
-                return None
-
-        # Query for MVT
-        with self.DATABASE_CONNECTION.cursor() as cur:
-            cur.execute(sql)
-            if not cur:
-                self.send_error(404, "sql query failed: %s" % (sql))
-                return None
-            return cur.fetchone()[0]
-
-        return None
-
     def get(self, z, x, y):
         path = '/' + '/'.join(request.path.split('/')[2:])
         tile = self.pathToTile(path)
@@ -185,19 +164,32 @@ class GeoTileView(MethodView):
             }
             return make_response(jsonify(responseObject)), 400
 
-        env = self.tileToEnvelope(tile)
-        sql = self.envelopeToSQL(env)
-        pbf = db.engine.execute(sql).fetchone()[0]
+        tilefolder = "{}/{}/{}".format(CACHE_DIR,z,x)
+        tilepath = "{}/{}.pbf".format(tilefolder,y)
 
+        if not exists(tilepath):
+            env = self.tileToEnvelope(tile)
+            sql = self.envelopeToSQL(env)
+            tile = db.engine.execute(sql).fetchone()[0]
+            if not exists(tilefolder):
+                makedirs(tilefolder)
+
+            with open(tilepath, 'wb') as f:
+                f.write(tile)
+                f.close()
+        else:
+            tile = open(tilepath, 'rb').read()
         # response = make_response(pbf)
         # response.headers['Access-Control-Allow-Origin'] = '*'
         # response.headers['Content-Type'] = "application/vnd.mapbox-vector-tile"
-        return Response(pbf,
-                       mimetype="text/plain",
-                       headers={
-                           "Content-Type": "application/vnd.mapbox-vector-tile",
-                           "Access-Control-Allow-Origin": "*"
-                        })
+        return Response(
+            tile,
+            mimetype="text/plain",
+            headers={
+                "Content-Type": "application/octet-stream",
+                "Access-Control-Allow-Origin": "*"
+            }
+        )
 
 # define the API resources
 get_geojson_view = GeoJsonView.as_view('get_geojson_view')
@@ -211,7 +203,7 @@ geo_blueprint.add_url_rule(
 )
 
 geo_blueprint.add_url_rule(
-    '/tiles/<int:z>/<int:x>/<int:y>.mvt',
+    '/tiles/<int:z>/<int:x>/<int:y>.pbf',
     view_func=get_tile_view,
     methods=['GET']
 )
