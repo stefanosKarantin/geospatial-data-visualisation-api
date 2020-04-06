@@ -144,7 +144,12 @@ class Polygon(db.Model):
     raster_val = db.Column(db.Integer)
     geom = db.Column(Geometry('POLYGON'))
 
-    def __init__(self, id, raster_val, geom):
-        self.id = id
-        self.raster_val = raster_val
-        self.geom = geom
+class Region(db.Model):
+    """
+    Model of regions multipoligons
+    """
+    __tablename__ = 'regions'
+
+    id = db.Column(db.String, primary_key=True)
+    name = db.Column(db.String)
+    geom = db.Column(Geometry('MULTIPOLYGON'))
