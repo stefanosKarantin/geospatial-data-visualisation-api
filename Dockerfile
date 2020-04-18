@@ -1,14 +1,16 @@
 FROM python:3.6
 
-WORKDIR /app
+COPY . /home/app/
+WORKDIR /home/app
 
 # Download Python dependencies
-COPY ["requirements.txt", "./"]
 RUN pip install -r requirements.txt
 
-# Bring source code into image
-COPY src/ .
-
+ENV ENVIRONMENT production
 # Use gunicorn to server flask app, not flask's dev/test server
-EXPOSE 5090
-CMD ["gunicorn", "--bind", "0.0.0.0:5090", "api:app"]
+EXPOSE 5000
+
+RUN chmod +x ./main.py
+RUN chmod +x ./runserver.sh
+
+ENTRYPOINT ["./runserver.sh"]

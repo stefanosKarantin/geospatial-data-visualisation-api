@@ -2,9 +2,12 @@
 
 import os
 basedir = os.path.abspath(os.path.dirname(__file__))
-postgres_local_base = 'postgresql://postgres:postgres@localhost:5431/'
-database_name = 'devdb'
+db_uri = 'postgres:5432/' if os.getenv('ENVIRONMENT') == 'production' else 'localhost:5431/'
 
+dev_uri = 'postgresql://postgres:postgres@' + db_uri
+
+postgres_local_base = os.getenv('DB_URL') if os.getenv('ENVIRONMENT') == 'production' else dev_uri
+database_name = 'devdb'
 
 class BaseConfig:
     """Base configuration."""
