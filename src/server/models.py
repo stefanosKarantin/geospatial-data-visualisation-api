@@ -5,13 +5,19 @@ import jwt
 import datetime
 
 from geoalchemy2 import Geometry
-from src.server import app, db, bcrypt
+from src.server import app, db, bcrypt#, api
 
 def getTokenError(msg):
     return {
         'error': 'TOKEN_ERROR',
         'message': msg
     }
+
+# successResponse = api.model('Model', {
+#     'name': fields.String,
+#     'address': fields.String,
+#     'date_updated': fields.DateTime(dt_format='rfc822'),
+# })
 
 class User(db.Model):
     """ User Model for storing user related details """
@@ -143,13 +149,3 @@ class Polygon(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     raster_val = db.Column(db.Integer)
     geom = db.Column(Geometry('POLYGON'))
-
-class Region(db.Model):
-    """
-    Model of regions multipoligons
-    """
-    __tablename__ = 'regions'
-
-    id = db.Column(db.String, primary_key=True)
-    name = db.Column(db.String)
-    geom = db.Column(Geometry('MULTIPOLYGON'))
