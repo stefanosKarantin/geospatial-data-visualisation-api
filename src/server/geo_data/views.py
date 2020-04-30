@@ -93,7 +93,7 @@ class GeoTileView(MethodView):
             return False
         if 'format' not in tile or tile['format'] not in ['pbf', 'mvt', 'png']:
             return False
-        size = 2 ** tile['zoom'];
+        size = 2 ** tile['zoom']
         if tile['x'] >= size or tile['y'] >= size:
             return False
         if tile['x'] < 0 or tile['y'] < 0:
@@ -191,10 +191,40 @@ class GeoTileView(MethodView):
             }
         )
 
+class GeoFilters(MethodView):
+    def post(self):
+        auth_header = request.headers.get('Authorization')
+        if auth_header:
+            auth_token = auth_header
+        else:
+            auth_token = ''
+        if auth_token:
+            resp = User.decode_auth_token(auth_token)
+            if not isinstance(resp, str):
+                raster_vals = list(map(lambda t: t[0],db.session.query(func.distinct(Polygon.raster_val)).order_by(Polygon.raster_val).all()))
+                responseObject = {
+                    'success': True,
+                    'filters': raster_vals
+                }
+
+                return make_response(jsonify(responseObject)), 200
+            else:
+                responseObject = {
+                    'success': False,
+                    'message': resp
+                }
+                return make_response(jsonify(responseObject)), 401
+        else:
+            responseObject = {
+                'success': False,
+                **getError(invalid_token_error)
+            }
+            return make_response(jsonify(responseObject)), 401
+
 # define the API resources
 get_geojson_view = GeoJsonView.as_view('get_geojson_view')
 get_tile_view = GeoTileView.as_view('get_tile_view')
-
+get_filters = GeoFilters.as_view('get_filters')
 # add Rules for API Endpoints
 geo_blueprint.add_url_rule(
     '/geo/getcretandata',
@@ -206,4 +236,10 @@ geo_blueprint.add_url_rule(
     '/tiles/<int:z>/<int:x>/<int:y>.pbf',
     view_func=get_tile_view,
     methods=['GET']
+)
+
+geo_blueprint.add_url_rule(
+    '/getFilters',
+    view_func=get_filters,
+    methods=['POST']
 )
