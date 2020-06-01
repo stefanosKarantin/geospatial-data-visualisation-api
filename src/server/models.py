@@ -140,7 +140,7 @@ class BlacklistToken(db.Model):
         else:
             return False
 
-class Polygon(db.Model):
+class TestPolygon(db.Model):
     """
     Model of cretan raster data
     """
@@ -149,3 +149,21 @@ class Polygon(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     raster_val = db.Column(db.Integer)
     geom = db.Column(Geometry('POLYGON'))
+
+class Crop(db.Model):
+    """
+    Model of cretan raster data
+    """
+    __tablename__ = 'crops'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    raster_val = db.Column(db.Integer)
+    geom = db.Column(Geometry('POLYGON'))
+    shape_leng = db.Column(db.Float)
+    shape_area = db.Column(db.Float)
+    S1Pix = db.Column(db.Integer)
+    S2Pix = db.Column(db.Integer)
+    CT_decl = db.Column(db.Integer)
+    CT_pred = db.Column(db.Integer)
+    CT_conf = db.Column(db.Float)
+    objectid = db.Column(db.Integer)
