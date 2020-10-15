@@ -3,6 +3,8 @@ FROM python:3.6
 COPY . /home/app/
 WORKDIR /home/app
 
+ENV PYTHONDONTWRITEBYTECODE 1
+
 # Download Python dependencies
 RUN pip install -r requirements.txt
 

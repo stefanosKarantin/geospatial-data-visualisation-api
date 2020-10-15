@@ -161,9 +161,21 @@ class Crop(db.Model):
     geom = db.Column(Geometry('POLYGON'))
     shape_leng = db.Column(db.Float)
     shape_area = db.Column(db.Float)
-    S1Pix = db.Column(db.Integer)
-    S2Pix = db.Column(db.Integer)
-    CT_decl = db.Column(db.Integer)
-    CT_pred = db.Column(db.Integer)
-    CT_conf = db.Column(db.Float)
+    s1pix = db.Column(db.Integer)
+    s2pix = db.Column(db.Integer)
+    ct_decl = db.Column(db.Integer)
+    ct_pred = db.Column(db.Integer)
+    ct_conf = db.Column(db.Float)
     objectid = db.Column(db.Integer)
+    region_id = db.Column(db.String)
+
+    @classmethod
+    def getCropsMetadata(cls):
+        return db.session.query(
+            cls.id,
+            cls.shape_leng,
+            cls.shape_area,
+            cls.ct_decl,
+            cls.ct_pred,
+            cls.region_id
+        ).all()

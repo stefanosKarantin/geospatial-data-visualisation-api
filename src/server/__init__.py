@@ -24,7 +24,9 @@ db = SQLAlchemy(app)
 from src.server.auth.views import auth_blueprint
 from src.server.geo_data.views import geo_blueprint
 from src.server.regions.views import regions_blueprint
+from src.server.graphs.views import graphs_blueprint
 
 app.register_blueprint(auth_blueprint)
 app.register_blueprint(geo_blueprint)
 app.register_blueprint(regions_blueprint)
+app.register_blueprint(graphs_blueprint)
