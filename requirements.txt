@@ -25,3 +25,4 @@ Werkzeug
 geoalchemy2
 mercantile
 gunicorn
+pandas
